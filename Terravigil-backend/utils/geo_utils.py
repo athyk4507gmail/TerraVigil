@@ -71,11 +71,12 @@ def calculate_area_ha(gdf: gpd.GeoDataFrame) -> float:
     return float(area_m2 / 10000.0)
 
 
-def mask_raster_with_geojson(src: rasterio.io.DatasetReader, mask_geojson: Dict[str, Any]):
+def mask_raster_with_geojson(src: rasterio.io.DatasetReader, mask_geojson: Dict[str, Any], crop: bool = True):
     geometries = [feat["geometry"] for feat in mask_geojson.get("features", [])]
     if not geometries:
         return src.read(), src.transform
-    out_image, out_transform = rio_mask(src, geometries, crop=False)
+    # Crop to geometry to reduce data size
+    out_image, out_transform = rio_mask(src, geometries, crop=crop)
     return out_image, out_transform
 
 

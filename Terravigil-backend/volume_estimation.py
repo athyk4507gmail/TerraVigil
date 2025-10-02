@@ -5,6 +5,7 @@ from rasterio.mask import mask as rio_mask
 import json
 
 from utils.geo_utils import load_raster, mask_raster_with_geojson
+import geopandas as gpd
 
 
 def _simpsons_rule_column(values: np.ndarray, dx: float) -> float:
@@ -30,7 +31,27 @@ def estimate_volume(dem_path: str, mask_geojson: Optional[Dict[str, Any]] = None
         pixel_height = abs(transform.e)
 
         if mask_geojson is not None:
-            masked, _ = mask_raster_with_geojson(src, mask_geojson)
+            # Accept nested structures where the geojson is under 'geojson'
+            if 'type' not in mask_geojson and 'geojson' in mask_geojson:
+                mask_geojson = mask_geojson['geojson']
+
+            # Reproject incoming GeoJSON to DEM CRS if needed
+            try:
+                gdf = gpd.GeoDataFrame.from_features(mask_geojson.get('features', []))
+                if gdf.crs is None:
+                    gdf = gdf.set_crs(4326, allow_override=True)
+                dem_crs = src.crs
+                if dem_crs is not None:
+                    gdf = gdf.to_crs(dem_crs)
+                mask_geojson = {
+                    'type': 'FeatureCollection',
+                    'features': json.loads(gdf.to_json()).get('features', [])
+                }
+            except Exception:
+                # Fall back to provided coordinates as-is
+                pass
+
+            masked, _ = mask_raster_with_geojson(src, mask_geojson, crop=True)
             # masked shape (bands, rows, cols)
             dem_masked = masked[0]
             mask_bool = np.where(np.isnan(dem_masked), False, True)
@@ -49,6 +70,14 @@ def estimate_volume(dem_path: str, mask_geojson: Optional[Dict[str, Any]] = None
         depth = baseline - dem
         depth[~np.isfinite(depth)] = 0.0
         depth[depth < 0] = 0.0
+
+        # Downsample if still very large to speed integration
+        max_pixels = 10_000_000
+        if dem.size > max_pixels:
+            ds_factor = int(np.sqrt(dem.size / max_pixels)) + 1
+            dem = dem[::ds_factor, ::ds_factor]
+            pixel_width *= ds_factor
+            pixel_height *= ds_factor
 
         # Integrate depth to volume: integrate along rows using Simpson per column, then multiply by pixel width
         # dx along rows is pixel_height, and width accumulation multiplies by pixel_width

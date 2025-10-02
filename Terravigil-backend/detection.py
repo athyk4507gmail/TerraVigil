@@ -1,6 +1,7 @@
 from typing import Dict, Any
 import numpy as np
 import rasterio
+import rasterio.enums
 from rasterio.transform import Affine
 import geopandas as gpd
 
@@ -26,33 +27,77 @@ def _pick_bands_for_ndvi(dataset: rasterio.io.DatasetReader):
 
 
 def detect_mining(image_path: str) -> Dict[str, Any]:
-    with load_raster(image_path) as src:
+    try:
+        with load_raster(image_path) as src:
         transform: Affine = src.transform
         crs = src.crs
         band_count = src.count
-
-        red_index, nir_index = _pick_bands_for_ndvi(src)
-
-        if red_index is not None and nir_index is not None:
-            red = src.read(red_index).astype(np.float32)
-            nir = src.read(nir_index).astype(np.float32)
-            denom = (nir + red)
-            denom[denom == 0] = 1e-6
-            ndvi = (nir - red) / denom
-            mining_mask = (ndvi < 0.2) & ~np.isnan(ndvi)
+        
+        # Check file size and dimensions for optimization
+        width, height = src.width, src.height
+        total_pixels = width * height
+        
+        # For very large files, use windowed reading and downsampling
+        if total_pixels > 10_000_000:  # 10M pixels threshold
+            # Calculate downsample factor
+            downsample_factor = max(1, int(np.sqrt(total_pixels / 10_000_000)))
+            
+            # Read with downsampling
+            red_index, nir_index = _pick_bands_for_ndvi(src)
+            
+            if red_index is not None and nir_index is not None:
+                red = src.read(red_index, 
+                              out_shape=(height // downsample_factor, width // downsample_factor),
+                              resampling=rasterio.enums.Resampling.average).astype(np.float32)
+                nir = src.read(nir_index,
+                              out_shape=(height // downsample_factor, width // downsample_factor), 
+                              resampling=rasterio.enums.Resampling.average).astype(np.float32)
+                
+                denom = (nir + red)
+                denom[denom == 0] = 1e-6
+                ndvi = (nir - red) / denom
+                mining_mask = (ndvi < 0.2) & ~np.isnan(ndvi)
+                
+                # Update transform for downsampled data
+                new_transform = src.transform * src.transform.scale(downsample_factor, downsample_factor)
+            else:
+                # Fallback with downsampling
+                band1 = src.read(1, 
+                               out_shape=(height // downsample_factor, width // downsample_factor),
+                               resampling=rasterio.enums.Resampling.average).astype(np.float32)
+                p99 = np.percentile(band1[~np.isnan(band1)], 99) if np.any(~np.isnan(band1)) else 1.0
+                if p99 == 0:
+                    p99 = 1.0
+                norm = band1 / p99
+                mining_mask = norm > 0.6
+                
+                new_transform = src.transform * src.transform.scale(downsample_factor, downsample_factor)
         else:
-            # Fallback to brightness: if high reflectance area considered as exposed soil/mining
-            # Use first band as proxy
-            band1 = src.read(1).astype(np.float32)
-            # Normalize by 99th percentile
-            p99 = np.percentile(band1[~np.isnan(band1)], 99) if np.any(~np.isnan(band1)) else 1.0
-            if p99 == 0:
-                p99 = 1.0
-            norm = band1 / p99
-            mining_mask = norm > 0.6
+            # Original processing for smaller files
+            red_index, nir_index = _pick_bands_for_ndvi(src)
+
+            if red_index is not None and nir_index is not None:
+                red = src.read(red_index).astype(np.float32)
+                nir = src.read(nir_index).astype(np.float32)
+                denom = (nir + red)
+                denom[denom == 0] = 1e-6
+                ndvi = (nir - red) / denom
+                mining_mask = (ndvi < 0.2) & ~np.isnan(ndvi)
+            else:
+                # Fallback to brightness: if high reflectance area considered as exposed soil/mining
+                # Use first band as proxy
+                band1 = src.read(1).astype(np.float32)
+                # Normalize by 99th percentile
+                p99 = np.percentile(band1[~np.isnan(band1)], 99) if np.any(~np.isnan(band1)) else 1.0
+                if p99 == 0:
+                    p99 = 1.0
+                norm = band1 / p99
+                mining_mask = norm > 0.6
+            
+            new_transform = transform
 
         mask_uint8 = mining_mask.astype(np.uint8)
-        geojson = raster_mask_to_polygons(mask_uint8, transform, crs)
+        geojson = raster_mask_to_polygons(mask_uint8, new_transform, crs)
 
         # area in hectares
         gdf = gpd.GeoDataFrame.from_features(geojson.get("features", []), crs=crs)
@@ -61,7 +106,11 @@ def detect_mining(image_path: str) -> Dict[str, Any]:
         return {
             "area_ha": float(area_ha),
             "geojson": geojson,
-            "mask_shape": [int(mask_uint8.shape[0]), int(mask_uint8.shape[1])]
+            "mask_shape": [int(mask_uint8.shape[0]), int(mask_uint8.shape[1])],
+            "original_size": [height, width],
+            "downsampled": total_pixels > 10_000_000
         }
+    except Exception as e:
+        raise RuntimeError(f"Detection failed: {str(e)}")
 
 
