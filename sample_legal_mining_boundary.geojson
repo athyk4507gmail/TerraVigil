@@ -1,0 +1,44 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Legal Mining Zone 1",
+        "permit_number": "MP-2024-001",
+        "area_ha": 150.5,
+        "status": "active"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-74.0, 40.7],
+          [-74.0, 40.8],
+          [-73.9, 40.8],
+          [-73.9, 40.7],
+          [-74.0, 40.7]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Legal Mining Zone 2",
+        "permit_number": "MP-2024-002",
+        "area_ha": 200.3,
+        "status": "active"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-73.8, 40.6],
+          [-73.8, 40.75],
+          [-73.7, 40.75],
+          [-73.7, 40.6],
+          [-73.8, 40.6]
+        ]]
+      }
+    }
+  ]
+}
+

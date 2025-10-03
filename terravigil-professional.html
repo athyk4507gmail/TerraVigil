@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TerraVigil - AI-Powered Mining Detection</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.158.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        .bg-dots {
+            background-image: radial-gradient(circle, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        .palantir-gradient {
+            background: linear-gradient(135deg, #0D1117 0%, #161B22 50%, #0D1117 100%);
+        }
+        .glass-effect {
+            background: rgba(13, 17, 23, 0.8);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .cyber-glow {
+            box-shadow: 0 0 20px rgba(0, 191, 255, 0.3);
+        }
+        .cyber-border {
+            border: 1px solid rgba(0, 191, 255, 0.3);
+        }
+    </style>
+</head>
+<body class="palantir-gradient text-gray-300 font-sans overflow-hidden">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <nav class="w-64 glass-effect border-r border-gray-800 p-5 flex flex-col">
+            <div class="flex items-center space-x-3 mb-12">
+                <div class="w-10 h-10 bg-gradient-to-br from-[#00BFFF] to-[#0099CC] rounded-md flex items-center justify-center cyber-glow">
+                    <svg viewBox="0 0 24 24" fill="none" className="text-white" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    </svg>
+                </div>
+                <h1 class="text-xl font-bold text-white">TerraVigil</h1>
+            </div>
+            <ul class="space-y-2">
+                <li>
+                    <button onclick="showView('home')" class="w-full flex items-center space-x-3 p-3 rounded-md transition-all duration-200 text-sm font-medium bg-gradient-to-r from-[#00BFFF] to-[#0099CC] text-white shadow-lg cyber-glow">
+                        <div class="w-6 h-6">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                <path d="M3 10v11h6v-7h6v7h6V10L12 3 3 10z"></path>
+                            </svg>
+                        </div>
+                        <span>Dashboard</span>
+                    </button>
+                </li>
+                <li>
+                    <button onclick="showView('map')" class="w-full flex items-center space-x-3 p-3 rounded-md transition-all duration-200 text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-white">
+                        <div class="w-6 h-6">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"></path>
+                                <circle cx="12" cy="10" r="3"></circle>
+                            </svg>
+                        </div>
+                        <span>Map Viewer</span>
+                    </button>
+                </li>
+                <li>
+                    <button onclick="showView('3d')" class="w-full flex items-center space-x-3 p-3 rounded-md transition-all duration-200 text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-white">
+                        <div class="w-6 h-6">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"></path>
+                                <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"></path>
+                            </svg>
+                        </div>
+                        <span>3D Terrain</span>
+                    </button>
+                </li>
+                <li>
+                    <button onclick="showView('analysis')" class="w-full flex items-center space-x-3 p-3 rounded-md transition-all duration-200 text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-white">
+                        <div class="w-6 h-6">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
+                                <path d="M14 2v6h6M16 13H8M16 17H8"></path>
+                            </svg>
+                        </div>
+                        <span>AI Analysis</span>
+                    </button>
+                </li>
+            </ul>
+            <div class="mt-auto text-center text-gray-600 text-xs">
+                <p>&copy; 2025 TerraVigil Inc.</p>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="flex-1 p-8 overflow-y-auto bg-dots">
+            <!-- Dashboard View -->
+            <div id="home" class="view">
+                <div class="flex justify-between items-center mb-8">
+                    <h2 class="text-3xl font-light text-white">Intelligence Dashboard</h2>
+                    <div class="flex space-x-4">
+                        <div class="glass-effect px-4 py-2 rounded-lg">
+                            <span class="text-sm text-gray-400">Status:</span>
+                            <span class="text-sm text-green-400 ml-2">● Active</span>
+                        </div>
+                        <div class="glass-effect px-4 py-2 rounded-lg">
+                            <span class="text-sm text-gray-400">Last Scan:</span>
+                            <span class="text-sm text-white ml-2">2 min ago</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div class="glass-effect border border-gray-800 rounded-lg p-6 cyber-border">
+                        <div class="text-gray-400 text-sm">Total Mining Area</div>
+                        <div class="text-3xl text-white mt-2">0.457 km</div>
+                        <div class="text-xs text-gray-500 mt-1">+12% from last scan</div>
+                    </div>
+                    <div class="glass-effect border border-gray-800 rounded-lg p-6 cyber-border">
+                        <div class="text-gray-400 text-sm">Features Detected</div>
+                        <div class="text-3xl text-white mt-2">2</div>
+                        <div class="text-xs text-gray-500 mt-1">Active monitoring</div>
+                    </div>
+                    <div class="glass-effect border border-gray-800 rounded-lg p-6 cyber-border">
+                        <div class="text-gray-400 text-sm">Legal Mining</div>
+                        <div class="text-3xl text-green-400 mt-2">0.253 km</div>
+                        <div class="text-xs text-green-500 mt-1">55% of total</div>
+                    </div>
+                    <div class="glass-effect border border-gray-800 rounded-lg p-6 cyber-border">
+                        <div class="text-gray-400 text-sm">Illegal Mining</div>
+                        <div class="text-3xl text-red-400 mt-2">0.204 km</div>
+                        <div class="text-xs text-red-500 mt-1">45% of total</div>
+                    </div>
+                </div>
+
+                <!-- Location Info -->
+                <div class="glass-effect border border-gray-800 rounded-lg p-6 mb-8">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="text-lg font-semibold text-white mb-2">Detection Zone</h3>
+                            <p class="text-gray-400">Coordinates: -33.4489° S, -70.6693° W</p>
+                            <p class="text-gray-400">Location: Santiago, Chile</p>
+                        </div>
+                        <button onclick="locateToDetectedArea()" class="bg-gradient-to-r from-[#00BFFF] to-[#0099CC] text-white px-6 py-2 rounded-lg hover:shadow-lg transition-all">
+                            Locate on Map
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Map View -->
+            <div id="map" class="view hidden">
+                <div class="flex justify-between items-center mb-8">
+                    <h2 class="text-3xl font-light text-white">Geospatial Intelligence</h2>
+                    <div class="flex space-x-4">
+                        <button onclick="locateToDetectedArea()" class="bg-gradient-to-r from-[#00BFFF] to-[#0099CC] text-white px-4 py-2 rounded-lg hover:shadow-lg transition-all">
+                            <span class="text-sm">📍 Locate Detection</span>
+                        </button>
+                        <button onclick="toggleMapLayer('satellite')" class="glass-effect px-4 py-2 rounded-lg hover:bg-gray-700 transition-all">
+                            <span class="text-sm">Satellite</span>
+                        </button>
+                        <button onclick="toggleMapLayer('terrain')" class="glass-effect px-4 py-2 rounded-lg hover:bg-gray-700 transition-all">
+                            <span class="text-sm">Terrain</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="h-[75vh] w-full rounded-lg border border-gray-800 overflow-hidden glass-effect">
+                    <div id="mapContainer" style="height: 100%; width: 100%;"></div>
+                </div>
+                
+                <div class="mt-4 flex justify-between items-center">
+                    <div class="flex space-x-4">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-4 bg-blue-500 rounded"></div>
+                            <span class="text-sm text-gray-300">All Mining</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-4 bg-green-500 rounded"></div>
+                            <span class="text-sm text-gray-300">Legal Mining</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-4 bg-red-500 rounded"></div>
+                            <span class="text-sm text-gray-300">Illegal Mining</span>
+                        </div>
+                    </div>
+                    <div class="glass-effect px-4 py-2 rounded-lg">
+                        <span class="text-sm text-gray-400">Zoom: </span>
+                        <span class="text-sm text-white" id="zoomLevel">10</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3D View -->
+            <div id="3d" class="view hidden">
+                <div class="flex justify-between items-center mb-8">
+                    <h2 class="text-3xl font-light text-white">3D Terrain Analysis</h2>
+                    <div class="flex space-x-4">
+                        <button onclick="reset3DView()" class="glass-effect px-4 py-2 rounded-lg hover:bg-gray-700 transition-all">
+                            <span class="text-sm">Reset View</span>
+                        </button>
+                        <button onclick="toggle3DWireframe()" class="glass-effect px-4 py-2 rounded-lg hover:bg-gray-700 transition-all">
+                            <span class="text-sm">Wireframe</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="relative h-[75vh] w-full rounded-lg border border-gray-800 overflow-hidden glass-effect">
+                    <div id="threeContainer" class="absolute inset-0"></div>
+                    <div class="absolute top-8 left-8 glass-effect p-4 rounded-lg pointer-events-none">
+                        <h3 class="font-semibold text-sm uppercase tracking-wider text-white">Pit Statistics</h3>
+                        <p class="text-xs mt-2 text-gray-300">Max Depth: <span class="font-mono text-[#00BFFF] text-base">15.2 meters</span></p>
+                        <p class="text-xs text-gray-300">Volume: <span class="font-mono text-[#00BFFF] text-base">2,450,000 m³</span></p>
+                        <p class="text-xs text-gray-300">Area: <span class="font-mono text-[#00BFFF] text-base">0.457 km</span></p>
+                    </div>
+                    <div class="absolute top-8 right-8 glass-effect p-4 rounded-lg pointer-events-none">
+                        <h3 class="font-semibold text-sm uppercase tracking-wider text-white">Controls</h3>
+                        <p class="text-xs text-gray-300">Left Click: Rotate</p>
+                        <p class="text-xs text-gray-300">Right Click: Pan</p>
+                        <p class="text-xs text-gray-300">Scroll: Zoom</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analysis View -->
+            <div id="analysis" class="view hidden">
+                <div class="flex justify-between items-center mb-8">
+                    <h2 class="text-3xl font-light text-white">AI Mining Analysis</h2>
+                    <div class="glass-effect px-4 py-2 rounded-lg">
+                        <span class="text-sm text-gray-400">Status:</span>
+                        <span class="text-sm text-green-400 ml-2">Ready</span>
+                    </div>
+                </div>
+                
+                <div class="max-w-4xl mx-auto">
+                    <div class="glass-effect border border-gray-800 p-8 rounded-lg">
+                        <h3 class="text-xl font-semibold mb-6 text-white">Upload Satellite Imagery</h3>
+                        <p class="mb-6 text-gray-400">Select a satellite image to begin AI-powered mining detection and analysis.</p>
+                        
+                        <div class="mb-8">
+                            <label class="block mb-2 text-sm font-medium text-gray-400">Satellite Image File</label>
+                            <input type="file" id="imageFile" accept=".tif,.tiff,.jpg,.jpeg,.png" class="w-full p-3 bg-gray-800 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[#00BFFF]"/>
+                            <div id="fileStatus" class="mt-2 text-sm text-gray-400"></div>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                            <button onclick="detectMining()" class="bg-gradient-to-r from-[#00BFFF] to-[#0099CC] text-white py-4 px-6 rounded-lg font-medium hover:shadow-lg transition-all cyber-glow">
+                                <div class="flex items-center justify-center space-x-2">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                    </svg>
+                                    <span>Detect Mining Activity</span>
+                                </div>
+                            </button>
+                            
+                            <button onclick="detectLegalIllegal()" class="bg-gradient-to-r from-red-600 to-red-700 text-white py-4 px-6 rounded-lg font-medium hover:shadow-lg transition-all">
+                                <div class="flex items-center justify-center space-x-2">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                                    </svg>
+                                    <span>Detect Legal/Illegal Mining</span>
+                                </div>
+                            </button>
+                        </div>
+                        
+                        <div class="text-center">
+                            <div class="text-gray-500 text-sm mb-4">OR</div>
+                            <button onclick="useSampleData()" class="glass-effect text-white py-3 px-6 rounded-lg font-medium hover:bg-gray-700 transition-all">
+                                Use Sample Data for Testing
+                            </button>
+                        </div>
+                        
+                        <!-- Progress Bar -->
+                        <div id="progressContainer" class="mt-6 hidden">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-sm text-gray-400" id="progressText">Processing...</span>
+                                <span class="text-sm text-[#00BFFF]" id="progressPercent">0%</span>
+                            </div>
+                            <div class="w-full bg-gray-700 rounded-full h-3">
+                                <div id="progressBar" class="bg-gradient-to-r from-[#00BFFF] to-[#0099CC] h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Results -->
+                        <div id="resultsContainer" class="mt-6 hidden">
+                            <div class="bg-green-900/30 border border-green-500/30 rounded-lg p-6">
+                                <div class="flex items-center space-x-3 mb-4">
+                                    <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                        </svg>
+                                    </div>
+                                    <h4 class="font-semibold text-green-400 text-lg">Analysis Complete</h4>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div class="bg-gray-800/50 rounded-lg p-4">
+                                        <p class="text-green-300 text-sm">Total Area</p>
+                                        <p class="text-green-400 text-xl font-semibold" id="detectedArea">0.457 km</p>
+                                    </div>
+                                    <div class="bg-gray-800/50 rounded-lg p-4">
+                                        <p class="text-green-300 text-sm">Features</p>
+                                        <p class="text-green-400 text-xl font-semibold" id="featureCount">2</p>
+                                    </div>
+                                    <div class="bg-gray-800/50 rounded-lg p-4">
+                                        <p class="text-green-300 text-sm">Confidence</p>
+                                        <p class="text-green-400 text-xl font-semibold">94.2%</p>
+                                    </div>
+                                </div>
+                                <div class="mt-4 flex space-x-4">
+                                    <button onclick="locateToDetectedArea()" class="bg-gradient-to-r from-[#00BFFF] to-[#0099CC] text-white px-6 py-2 rounded-lg hover:shadow-lg transition-all">
+                                        📍 Locate on Map
+                                    </button>
+                                    <button onclick="showView('3d')" class="glass-effect text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition-all">
+                                        View 3D Terrain
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let map;
+        let scene, camera, renderer, controls;
+        let currentMapLayer = 'satellite';
+        let wireframeMode = false;
+
+        function showView(viewName) {
+            // Hide all views
+            document.querySelectorAll('.view').forEach(view => {
+                view.classList.add('hidden');
+            });
+            
+            // Show selected view
+            document.getElementById(viewName).classList.remove('hidden');
+            
+            // Update sidebar buttons
+            document.querySelectorAll('nav button').forEach(btn => {
+                btn.className = btn.className.replace('bg-gradient-to-r from-[#00BFFF] to-[#0099CC] text-white shadow-lg cyber-glow', 'text-gray-400 hover:bg-gray-800 hover:text-white');
+            });
+            event.target.closest('button').className = event.target.closest('button').className.replace('text-gray-400 hover:bg-gray-800 hover:text-white', 'bg-gradient-to-r from-[#00BFFF] to-[#0099CC] text-white shadow-lg cyber-glow');
+            
+            // Initialize specific views
+            if (viewName === 'map' && !map) {
+                initMap();
+            }
+            if (viewName === '3d' && !scene) {
+                init3D();
+            }
+        }
+
+        function initMap() {
+            map = L.map('mapContainer', {
+                zoomControl: false,
+                attributionControl: false
+            }).setView([-33.4489, -70.6693], 10);
+            
+            // Add zoom control
+            L.control.zoom({
+                position: 'topright'
+            }).addTo(map);
+            
+            // Add attribution
+            L.control.attribution({
+                position: 'bottomright'
+            }).addTo(map);
+            
+            // Dark satellite layer
+            const darkSatellite = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            });
+            
+            const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: '&copy; Esri'
+            });
+            
+            // Add default layer
+            darkSatellite.addTo(map);
+            
+            // Store layers
+            map.darkLayer = darkSatellite;
+            map.satelliteLayer = satellite;
+            
+            // Add mining areas in Chile (Santiago region)
+            const allMining = L.polygon([
+                [-33.4, -70.6], [-33.3, -70.6], [-33.3, -70.5], [-33.4, -70.5]
+            ], {color: '#00BFFF', fillOpacity: 0.15, weight: 2});
+            
+            const legalMining = L.polygon([
+                [-33.4, -70.6], [-33.35, -70.6], [-33.35, -70.55], [-33.4, -70.55]
+            ], {color: '#00FF00', fillOpacity: 0.3, weight: 3});
+            
+            const illegalMining = L.polygon([
+                [-33.35, -70.6], [-33.3, -70.6], [-33.3, -70.5], [-33.35, -70.5]
+            ], {color: '#FF0000', fillOpacity: 0.3, weight: 3});
+            
+            allMining.addTo(map);
+            legalMining.addTo(map);
+            illegalMining.addTo(map);
+            
+            // Add location marker
+            const locationMarker = L.marker([-33.4489, -70.6693]).addTo(map);
+            locationMarker.bindPopup('<b>Santiago, Chile</b><br>Mining Detection Zone');
+            
+            // Update zoom level display
+            map.on('zoomend', function() {
+                document.getElementById('zoomLevel').textContent = map.getZoom();
+            });
+        }
+
+        function toggleMapLayer(layer) {
+            if (layer === 'satellite') {
+                map.removeLayer(map.darkLayer);
+                map.satelliteLayer.addTo(map);
+                currentMapLayer = 'satellite';
+            } else {
+                map.removeLayer(map.satelliteLayer);
+                map.darkLayer.addTo(map);
+                currentMapLayer = 'dark';
+            }
+        }
+
+        function locateToDetectedArea() {
+            if (map) {
+                // Switch to map view
+                showView('map');
+                // Zoom to the detected mining area in Chile
+                map.setView([-33.35, -70.55], 12);
+                // Add a popup to highlight the area
+                L.popup()
+                    .setLatLng([-33.35, -70.55])
+                    .setContent('<b>Detected Mining Area</b><br>Santiago, Chile<br>Legal: Green | Illegal: Red')
+                    .openOn(map);
+            }
+        }
+
+        function init3D() {
+            const container = document.getElementById('threeContainer');
+            
+            // Clear any existing content
+            container.innerHTML = '';
+            
+            // Scene setup
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setClearColor(0x000000, 0);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+            
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 2;
+            controls.maxDistance = 50;
+            controls.maxPolarAngle = Math.PI / 2;
+            
+            // Terrain geometry - Create a more realistic mining pit
+            const geometry = new THREE.PlaneGeometry(20, 20, 64, 64);
+            const vertices = geometry.attributes.position.array;
+            
+            // Create a mining pit shape
+            for (let i = 0; i < vertices.length; i += 3) {
+                const x = vertices[i];
+                const y = vertices[i + 1];
+                const dist = Math.sqrt(x*x + y*y);
+                
+                // Create a pit in the center
+                if (dist < 3) {
+                    vertices[i+2] = -2 + (dist * 0.5) + (Math.random() - 0.5) * 0.1;
+                } else {
+                    vertices[i+2] = Math.sin(x * 0.5) * 0.3 + Math.cos(y * 0.5) * 0.3 + (Math.random() - 0.5) * 0.05;
+                }
+            }
+            
+            geometry.attributes.position.needsUpdate = true;
+            geometry.computeVertexNormals();
+            
+            // Materials
+            const solidMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x8B4513, 
+                wireframe: false, 
+                transparent: false, 
+                opacity: 1, 
+                roughness: 0.8,
+                metalness: 0.2
+            });
+            
+            const wireframeMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x00BFFF, 
+                wireframe: true, 
+                transparent: true, 
+                opacity: 0.6 
+            });
+            
+            // Create terrain group
+            const terrainGroup = new THREE.Group();
+            
+            // Solid terrain
+            const solidMesh = new THREE.Mesh(geometry, solidMaterial);
+            solidMesh.receiveShadow = true;
+            solidMesh.castShadow = true;
+            terrainGroup.add(solidMesh);
+            
+            // Wireframe overlay
+            const wireframeMesh = new THREE.Mesh(geometry, wireframeMaterial);
+            terrainGroup.add(wireframeMesh);
+            
+            terrainGroup.rotation.x = -Math.PI / 2;
+            scene.add(terrainGroup);
+            
+            // Add mining pit markers
+            const pitGeometry = new THREE.SphereGeometry(0.2, 8, 6);
+            const pitMaterial = new THREE.MeshBasicMaterial({ color: 0xFF0000 });
+            
+            // Legal mining pit (green)
+            const legalPit = new THREE.Mesh(pitGeometry, new THREE.MeshBasicMaterial({ color: 0x00FF00 }));
+            legalPit.position.set(-2, -1.5, 2);
+            scene.add(legalPit);
+            
+            // Illegal mining pit (red)
+            const illegalPit = new THREE.Mesh(pitGeometry, new THREE.MeshBasicMaterial({ color: 0xFF0000 }));
+            illegalPit.position.set(2, -1.5, -2);
+            scene.add(illegalPit);
+            
+            // Enhanced lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(10, 20, 10);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+            
+            // Point light for better illumination
+            const pointLight = new THREE.PointLight(0x00BFFF, 0.5, 100);
+            pointLight.position.set(0, 10, 0);
+            scene.add(pointLight);
+            
+            camera.position.set(8, 8, 8);
+            camera.lookAt(0, 0, 0);
+            
+            // Animation loop
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+            
+            // Handle window resize
+            window.addEventListener('resize', function() {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            });
+        }
+
+        function reset3DView() {
+            if (controls) {
+                controls.reset();
+            }
+        }
+
+        function toggle3DWireframe() {
+            wireframeMode = !wireframeMode;
+            // Toggle wireframe mode for materials
+            scene.traverse((child) => {
+                if (child.isMesh) {
+                    child.material.wireframe = wireframeMode;
+                }
+            });
+        }
+
+        // Analysis functions
+        function detectMining() {
+            const fileInput = document.getElementById('imageFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a satellite image file first!');
+                return;
+            }
+            
+            startAnalysis('Mining Detection');
+        }
+        
+        function detectLegalIllegal() {
+            const fileInput = document.getElementById('imageFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a satellite image file first!');
+                return;
+            }
+            
+            startAnalysis('Legal/Illegal Mining Detection');
+        }
+        
+        function useSampleData() {
+            startAnalysis('Sample Data Analysis');
+        }
+        
+        function startAnalysis(type) {
+            // Show progress
+            document.getElementById('progressContainer').classList.remove('hidden');
+            document.getElementById('resultsContainer').classList.add('hidden');
+            document.getElementById('progressText').textContent = `${type} in progress...`;
+            
+            // Simulate processing with progress updates
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress > 100) progress = 100;
+                
+                document.getElementById('progressBar').style.width = progress + '%';
+                document.getElementById('progressPercent').textContent = Math.round(progress) + '%';
+                
+                if (progress >= 100) {
+                    clearInterval(progressInterval);
+                    setTimeout(() => {
+                        showResults();
+                    }, 500);
+                }
+            }, 200);
+        }
+        
+        function showResults() {
+            // Hide progress, show results
+            document.getElementById('progressContainer').classList.add('hidden');
+            document.getElementById('resultsContainer').classList.remove('hidden');
+            
+            // Show success message
+            setTimeout(() => {
+                alert('Analysis completed successfully! Check the Dashboard and Map Viewer for detailed results.');
+            }, 1000);
+        }
+        
+        // File input change handler
+        document.getElementById('imageFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const status = document.getElementById('fileStatus');
+            
+            if (file) {
+                const fileSize = (file.size / (1024 * 1024)).toFixed(2);
+                status.textContent = `Selected: ${file.name} (${fileSize} MB)`;
+                status.className = 'mt-2 text-sm text-green-400';
+            } else {
+                status.textContent = '';
+            }
+        });
+
+        // Initialize dashboard view on load
+        showView('home');
+    </script>
+</body>
+</html>

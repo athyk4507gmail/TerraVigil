@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TerraVigil Dashboard</title>
+    <style>
+        body {
+            background: linear-gradient(135deg, #1e3a8a, #1e40af);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .header h1 {
+            font-size: 3rem;
+            margin: 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .card h3 {
+            margin-top: 0;
+            color: #60a5fa;
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: bold;
+        }
+        .status.online {
+            background: #10b981;
+            color: white;
+        }
+        .status.offline {
+            background: #ef4444;
+            color: white;
+        }
+        .map-placeholder {
+            height: 200px;
+            background: linear-gradient(45deg, #374151, #4b5563);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #9ca3af;
+            font-size: 1.1rem;
+        }
+        .btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.3s ease;
+        }
+        .btn:hover {
+            background: #2563eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌍 TerraVigil</h1>
+            <p>Mining Surveillance & Environmental Monitoring Dashboard</p>
+        </div>
+        
+        <div class="dashboard">
+            <div class="card">
+                <h3>📍 Location Monitoring</h3>
+                <div class="map-placeholder">
+                    Interactive Map Loading...
+                </div>
+                <p>Real-time monitoring of mining sites and environmental boundaries.</p>
+            </div>
+            
+            <div class="card">
+                <h3>📊 System Status</h3>
+                <p><strong>Frontend:</strong> <span class="status online">Online</span></p>
+                <p><strong>Backend:</strong> <span class="status offline">Offline</span></p>
+                <p><strong>Database:</strong> <span class="status offline">Offline</span></p>
+                <button class="btn" onclick="alert('Backend services will be available soon!')">
+                    Connect Backend
+                </button>
+            </div>
+            
+            <div class="card">
+                <h3>🔍 Detection Alerts</h3>
+                <p>No active alerts</p>
+                <p>Last scan: <span id="lastScan">Never</span></p>
+                <button class="btn" onclick="updateScanTime()">
+                    Run Detection
+                </button>
+            </div>
+            
+            <div class="card">
+                <h3>📈 Analytics</h3>
+                <p>Volume Estimation: <strong>0 m³</strong></p>
+                <p>Boundary Compliance: <strong>100%</strong></p>
+                <p>Environmental Impact: <strong>Low</strong></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function updateScanTime() {
+            document.getElementById('lastScan').textContent = new Date().toLocaleTimeString();
+            alert('Detection scan completed!');
+        }
+        
+        // Simulate real-time updates
+        setInterval(() => {
+            const now = new Date();
+            console.log('TerraVigil Dashboard running at:', now.toLocaleTimeString());
+        }, 5000);
+    </script>
+</body>
+</html>

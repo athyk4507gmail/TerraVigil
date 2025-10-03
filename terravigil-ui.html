@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TerraVigil - Mining Surveillance Dashboard</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+    <script>
+        // Simple mouse controls for 3D scene
+        class SimpleOrbitControls {
+            constructor(camera, domElement) {
+                this.camera = camera;
+                this.domElement = domElement;
+                this.enabled = true;
+                this.enableDamping = true;
+                this.dampingFactor = 0.05;
+                
+                this.rotateSpeed = 1.0;
+                this.zoomSpeed = 1.0;
+                
+                this.spherical = new THREE.Spherical();
+                this.sphericalDelta = new THREE.Spherical();
+                
+                this.scale = 1;
+                this.panSpeed = 1.0;
+                this.keyPanSpeed = 7.0;
+                
+                this.minDistance = 0;
+                this.maxDistance = Infinity;
+                
+                this.minPolarAngle = 0;
+                this.maxPolarAngle = Math.PI;
+                
+                this.minAzimuthAngle = -Infinity;
+                this.maxAzimuthAngle = Infinity;
+                
+                this.enableZoom = true;
+                this.enableRotate = true;
+                this.enablePan = true;
+                
+                this.target = new THREE.Vector3();
+                
+                this.mouseButtons = {
+                    LEFT: THREE.MOUSE.ROTATE,
+                    MIDDLE: THREE.MOUSE.DOLLY,
+                    RIGHT: THREE.MOUSE.PAN
+                };
+                
+                this.touches = {
+                    ONE: THREE.TOUCH.ROTATE,
+                    TWO: THREE.TOUCH.DOLLY_PAN
+                };
+                
+                this.state = 'NONE';
+                this.euler = new THREE.Euler().setFromQuaternion(this.camera.quaternion);
+                this.euler.order = this.camera.rotation.order;
+                
+                this.update();
+                this.domElement.addEventListener('contextmenu', this.onContextMenu.bind(this));
+                this.domElement.addEventListener('mousedown', this.onMouseDown.bind(this));
+                this.domElement.addEventListener('wheel', this.onMouseWheel.bind(this));
+                this.domElement.addEventListener('touchstart', this.onTouchStart.bind(this));
+                this.domElement.addEventListener('touchend', this.onTouchEnd.bind(this));
+                this.domElement.addEventListener('touchmove', this.onTouchMove.bind(this));
+                window.addEventListener('keydown', this.onKeyDown.bind(this));
+            }
+            
+            update() {
+                const offset = new THREE.Vector3();
+                const quat = new THREE.Quaternion().setFromUnitVectors(this.camera.up, new THREE.Vector3(0, 1, 0));
+                const quatInverse = quat.clone().invert();
+                const lastPosition = new THREE.Vector3();
+                const lastQuaternion = new THREE.Quaternion();
+                
+                return () => {
+                    const position = this.camera.position;
+                    offset.copy(position).sub(this.target);
+                    offset.applyQuaternion(quat);
+                    
+                    this.spherical.setFromVector3(offset);
+                    
+                    if (this.autoRotate && this.state === 'NONE') {
+                        this.rotateLeft(this.getAutoRotationAngle());
+                    }
+                    
+                    this.spherical.theta += this.sphericalDelta.theta;
+                    this.spherical.phi += this.sphericalDelta.phi;
+                    
+                    this.spherical.theta = Math.max(this.minAzimuthAngle, Math.min(this.maxAzimuthAngle, this.spherical.theta));
+                    this.spherical.phi = Math.max(this.minPolarAngle, Math.min(this.maxPolarAngle, this.spherical.phi));
+                    this.spherical.makeSafe();
+                    
+                    this.spherical.radius *= this.scale;
+                    this.spherical.radius = Math.max(this.minDistance, Math.min(this.maxDistance, this.spherical.radius));
+                    
+                    this.target.addScaledVector(this.panOffset, 1);
+                    
+                    offset.setFromSpherical(this.spherical);
+                    offset.applyQuaternion(quatInverse);
+                    position.copy(this.target).add(offset);
+                    this.camera.lookAt(this.target);
+                    
+                    if (this.enableDamping === true) {
+                        this.sphericalDelta.theta *= (1 - this.dampingFactor);
+                        this.sphericalDelta.phi *= (1 - this.dampingFactor);
+                        this.panOffset.multiplyScalar(1 - this.dampingFactor);
+                    } else {
+                        this.sphericalDelta.set(0, 0, 0);
+                        this.panOffset.set(0, 0, 0);
+                    }
+                    
+                    this.scale = 1;
+                    
+                    if (lastPosition.distanceToSquared(this.camera.position) > 0.000001 || 8 * (1 - lastQuaternion.dot(this.camera.quaternion)) > 0.000001) {
+                        lastPosition.copy(this.camera.position);
+                        lastQuaternion.copy(this.camera.quaternion);
+                        return true;
+                    }
+                    return false;
+                };
+            }
+            
+            onContextMenu(event) {
+                if (this.enabled === false) return;
+                event.preventDefault();
+            }
+            
+            onMouseDown(event) {
+                if (this.enabled === false) return;
+                event.preventDefault();
+                
+                switch (event.button) {
+                    case 0:
+                        this.state = 'ROTATE';
+                        break;
+                    case 1:
+                        this.state = 'ZOOM';
+                        break;
+                    case 2:
+                        this.state = 'PAN';
+                        break;
+                }
+                
+                if (this.state === 'ROTATE' && !this.enableRotate) return;
+                if (this.state === 'ZOOM' && !this.enableZoom) return;
+                if (this.state === 'PAN' && !this.enablePan) return;
+                
+                this.domElement.ownerDocument.addEventListener('mousemove', this.onMouseMove.bind(this));
+                this.domElement.ownerDocument.addEventListener('mouseup', this.onMouseUp.bind(this));
+            }
+            
+            onMouseMove(event) {
+                if (this.enabled === false) return;
+                event.preventDefault();
+                
+                const rect = this.domElement.getBoundingClientRect();
+                const element = this.domElement;
+                const mouse = new THREE.Vector2();
+                mouse.x = (event.clientX - rect.left) / element.clientWidth * 2 - 1;
+                mouse.y = -(event.clientY - rect.top) / element.clientHeight * 2 + 1;
+                
+                if (this.state === 'ROTATE') {
+                    this.rotateLeft(2 * Math.PI * mouse.x * this.rotateSpeed / element.clientHeight);
+                    this.rotateUp(2 * Math.PI * mouse.y * this.rotateSpeed / element.clientHeight);
+                } else if (this.state === 'ZOOM') {
+                    this.dollyIn(this.getZoomScale() * mouse.y);
+                } else if (this.state === 'PAN') {
+                    this.panLeft(-mouse.x * this.panSpeed);
+                    this.panUp(mouse.y * this.panSpeed);
+                }
+            }
+            
+            onMouseUp(event) {
+                if (this.enabled === false) return;
+                this.domElement.ownerDocument.removeEventListener('mousemove', this.onMouseMove.bind(this));
+                this.domElement.ownerDocument.removeEventListener('mouseup', this.onMouseUp.bind(this));
+                this.state = 'NONE';
+            }
+            
+            onMouseWheel(event) {
+                if (this.enabled === false || this.enableZoom === false || (this.state !== 'NONE' && this.state !== 'ROTATE')) return;
+                event.preventDefault();
+                event.stopPropagation();
+                
+                if (event.deltaY < 0) {
+                    this.dollyOut(this.getZoomScale());
+                } else if (event.deltaY > 0) {
+                    this.dollyIn(this.getZoomScale());
+                }
+            }
+            
+            onTouchStart(event) {
+                if (this.enabled === false) return;
+                event.preventDefault();
+                
+                switch (event.touches.length) {
+                    case 1:
+                        this.state = 'TOUCH_ROTATE';
+                        break;
+                    case 2:
+                        this.state = 'TOUCH_ZOOM_PAN';
+                        break;
+                    default:
+                        this.state = 'NONE';
+                }
+            }
+            
+            onTouchEnd(event) {
+                if (this.enabled === false) return;
+                this.state = 'NONE';
+            }
+            
+            onTouchMove(event) {
+                if (this.enabled === false) return;
+                event.preventDefault();
+                event.stopPropagation();
+                
+                switch (event.touches.length) {
+                    case 1:
+                        this.rotateLeft(2 * Math.PI * event.touches[0].pageX / this.domElement.clientWidth * this.rotateSpeed);
+                        this.rotateUp(2 * Math.PI * event.touches[0].pageY / this.domElement.clientHeight * this.rotateSpeed);
+                        break;
+                    case 2:
+                        const dx = event.touches[0].pageX - event.touches[1].pageX;
+                        const dy = event.touches[0].pageY - event.touches[1].pageY;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        this.dollyIn(distance * this.zoomSpeed);
+                        break;
+                }
+            }
+            
+            onKeyDown(event) {
+                if (this.enabled === false || this.enablePan === false) return;
+                switch (event.code) {
+                    case 'ArrowUp':
+                        this.pan(0, this.keyPanSpeed);
+                        event.preventDefault();
+                        break;
+                    case 'ArrowDown':
+                        this.pan(0, -this.keyPanSpeed);
+                        event.preventDefault();
+                        break;
+                    case 'ArrowLeft':
+                        this.pan(this.keyPanSpeed, 0);
+                        event.preventDefault();
+                        break;
+                    case 'ArrowRight':
+                        this.pan(-this.keyPanSpeed, 0);
+                        event.preventDefault();
+                        break;
+                }
+            }
+            
+            rotateLeft(angle) {
+                this.sphericalDelta.theta -= angle;
+            }
+            
+            rotateUp(angle) {
+                this.sphericalDelta.phi -= angle;
+            }
+            
+            panLeft(distance) {
+                this.panOffset.x -= distance;
+            }
+            
+            panUp(distance) {
+                this.panOffset.y += distance;
+            }
+            
+            pan(deltaX, deltaY) {
+                const element = this.domElement;
+                const offset = new THREE.Vector3();
+                const position = this.camera.position;
+                offset.copy(position).sub(this.target).multiplyScalar(this.panSpeed);
+                this.panLeft(2 * deltaX * offset.length / element.clientHeight);
+                this.panUp(2 * deltaY * offset.length / element.clientHeight);
+            }
+            
+            dollyIn(dollyScale) {
+                if (this.enableZoom === false) return;
+                this.scale /= dollyScale;
+            }
+            
+            dollyOut(dollyScale) {
+                if (this.enableZoom === false) return;
+                this.scale *= dollyScale;
+            }
+            
+            getZoomScale() {
+                return Math.pow(0.95, this.zoomSpeed);
+            }
+            
+            getAutoRotationAngle() {
+                return 2 * Math.PI / 60 / 60;
+            }
+            
+            reset() {
+                this.target.copy(this.target0);
+                this.camera.position.copy(this.position0);
+                this.camera.up.copy(this.up0);
+                this.camera.lookAt(this.target);
+                this.update();
+            }
+        }
+        
+        // Make it available globally
+        window.SimpleOrbitControls = SimpleOrbitControls;
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #000000 0%, #0a0a0a 50%, #1a1a1a 100%);
+            color: #e2e8f0;
+            overflow-x: hidden;
+        }
+
+        .header {
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid #333333;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .header h1 {
+            color: #60a5fa;
+            font-size: 2rem;
+            font-weight: 700;
+        }
+
+        .header p {
+            color: #94a3b8;
+            margin-top: 0.25rem;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            padding: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .panel {
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 16px;
+            padding: 1.5rem;
+            border: 1px solid #333333;
+            backdrop-filter: blur(10px);
+        }
+
+        .panel h2 {
+            color: #60a5fa;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .map-container {
+            height: 400px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #333333;
+            position: relative;
+            background: #000000;
+        }
+
+        .map-container::before {
+            content: 'Interactive Map Loading...';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #64748b;
+            z-index: 1;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn:hover {
+            background: linear-gradient(135deg, #2563eb, #1e40af);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn:disabled {
+            background: #64748b;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-card {
+            background: rgba(0, 0, 0, 0.6);
+            padding: 1rem;
+            border-radius: 12px;
+            border: 1px solid #333333;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #60a5fa;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-label {
+            color: #94a3b8;
+            font-size: 0.875rem;
+        }
+
+        .file-upload {
+            border: 2px dashed #333333;
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 1rem;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .file-upload:hover {
+            border-color: #60a5fa;
+            background: rgba(96, 165, 250, 0.1);
+        }
+
+        .file-upload.dragover {
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.2);
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #334155;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            border-left: 4px solid;
+        }
+
+        .alert.success {
+            background: rgba(34, 197, 94, 0.1);
+            border-color: #22c55e;
+            color: #22c55e;
+        }
+
+        .alert.error {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: #ef4444;
+            color: #ef4444;
+        }
+
+        .alert.info {
+            background: rgba(59, 130, 246, 0.1);
+            border-color: #3b82f6;
+            color: #3b82f6;
+        }
+
+        .three-container {
+            height: 300px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #333333;
+            background: #000000;
+            position: relative;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+
+        .status-online {
+            background: #22c55e;
+            box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+        }
+
+        .status-offline {
+            background: #ef4444;
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+        }
+
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌍 TerraVigil</h1>
+        <p>Mining Surveillance & Environmental Monitoring Dashboard</p>
+    </div>
+
+    <div class="dashboard">
+        <!-- Map Panel -->
+        <div class="panel">
+            <h2>📍 Interactive Map</h2>
+            <div class="map-container" id="map"></div>
+            <div class="controls">
+                <button class="btn" onclick="loadSampleData()">
+                    📊 Load Sample Data
+                </button>
+                <button class="btn" onclick="clearMap()">
+                    🗑️ Clear Map
+                </button>
+            </div>
+        </div>
+
+        <!-- Detection Panel -->
+        <div class="panel">
+            <h2>🔍 Mining Detection</h2>
+            <div class="file-upload" id="fileUpload" onclick="document.getElementById('fileInput').click()">
+                <div>📁 Click to upload or drag & drop</div>
+                <div style="font-size: 0.875rem; color: #94a3b8; margin-top: 0.5rem;">
+                    Supported: JPG, PNG, TIFF
+                </div>
+            </div>
+            <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="handleFileUpload(event)">
+            
+            <div class="progress-bar" id="progressBar" style="display: none;">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            
+            <div id="detectionResults"></div>
+        </div>
+
+        <!-- Statistics Panel -->
+        <div class="panel">
+            <h2>📈 Statistics</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalArea">0</div>
+                    <div class="stat-label">Total Mining Area (km²)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="illegalArea">0</div>
+                    <div class="stat-label">Illegal Mining (km²)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="volume">0</div>
+                    <div class="stat-label">Volume Extracted (m³)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="compliance">100</div>
+                    <div class="stat-label">Compliance Rate (%)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3D Visualization Panel -->
+        <div class="panel">
+            <h2>🎯 3D Visualization</h2>
+            <div class="three-container" id="threeContainer"></div>
+            <div class="controls">
+                <button class="btn" onclick="init3D()">
+                    🎮 Initialize 3D
+                </button>
+                <button class="btn" onclick="reset3D()">
+                    🔄 Reset View
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let map;
+        let threeScene, threeCamera, threeRenderer, threeControls;
+        let currentStats = {
+            totalArea: 0,
+            illegalArea: 0,
+            volume: 0,
+            compliance: 100
+        };
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            initMap();
+            loadSampleData();
+            updateStats();
+        });
+
+        // Map initialization
+        function initMap() {
+            map = L.map('map').setView([20.5937, 78.9629], 6); // India center
+            
+            // Dark theme map tiles
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '© OpenStreetMap contributors © CARTO',
+                subdomains: 'abcd',
+                maxZoom: 19
+            }).addTo(map);
+        }
+
+        // Load sample data
+        function loadSampleData() {
+            // Simulate loading sample data
+            showAlert('Loading sample mining data...', 'info');
+            
+            setTimeout(() => {
+                // Add sample markers
+                const sampleLocations = [
+                    { lat: 20.5937, lng: 78.9629, name: 'Mining Site A', type: 'legal' },
+                    { lat: 21.1458, lng: 79.0882, name: 'Mining Site B', type: 'illegal' },
+                    { lat: 19.7515, lng: 75.7139, name: 'Mining Site C', type: 'legal' }
+                ];
+
+                sampleLocations.forEach(location => {
+                    const color = location.type === 'legal' ? '#22c55e' : '#ef4444';
+                    const marker = L.circleMarker([location.lat, location.lng], {
+                        color: color,
+                        fillColor: color,
+                        fillOpacity: 0.7,
+                        radius: 8
+                    }).addTo(map);
+                    
+                    marker.bindPopup(`<b>${location.name}</b><br>Type: ${location.type}`);
+                });
+
+                // Update stats
+                currentStats = {
+                    totalArea: 12.5,
+                    illegalArea: 1.8,
+                    volume: 85000,
+                    compliance: 85.6
+                };
+                updateStats();
+                
+                showAlert('Sample data loaded successfully!', 'success');
+            }, 1500);
+        }
+
+        // Clear map
+        function clearMap() {
+            map.eachLayer(layer => {
+                if (layer instanceof L.CircleMarker) {
+                    map.removeLayer(layer);
+                }
+            });
+            currentStats = { totalArea: 0, illegalArea: 0, volume: 0, compliance: 100 };
+            updateStats();
+            showAlert('Map cleared', 'info');
+        }
+
+        // File upload handling
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            showAlert('Processing image...', 'info');
+            showProgress(0);
+
+            // Simulate processing
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += Math.random() * 20;
+                if (progress >= 100) {
+                    progress = 100;
+                    clearInterval(interval);
+                    showDetectionResults(file.name);
+                }
+                showProgress(progress);
+            }, 200);
+        }
+
+        // Show progress
+        function showProgress(percent) {
+            const progressBar = document.getElementById('progressBar');
+            const progressFill = document.getElementById('progressFill');
+            progressBar.style.display = 'block';
+            progressFill.style.width = percent + '%';
+        }
+
+        // Show detection results
+        function showDetectionResults(filename) {
+            const resultsDiv = document.getElementById('detectionResults');
+            resultsDiv.innerHTML = `
+                <div class="alert success">
+                    <strong>Detection Complete!</strong><br>
+                    File: ${filename}<br>
+                    Mining detected: Yes<br>
+                    Confidence: 94.2%<br>
+                    Area: 2.3 km²
+                </div>
+            `;
+            
+            // Update stats
+            currentStats.illegalArea += 2.3;
+            currentStats.totalArea += 2.3;
+            currentStats.compliance = ((currentStats.totalArea - currentStats.illegalArea) / currentStats.totalArea * 100).toFixed(1);
+            updateStats();
+        }
+
+        // Update statistics
+        function updateStats() {
+            document.getElementById('totalArea').textContent = currentStats.totalArea.toFixed(1);
+            document.getElementById('illegalArea').textContent = currentStats.illegalArea.toFixed(1);
+            document.getElementById('volume').textContent = currentStats.volume.toLocaleString();
+            document.getElementById('compliance').textContent = currentStats.compliance;
+        }
+
+        // Show alert
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert ${type}`;
+            alertDiv.innerHTML = message;
+            
+            const resultsDiv = document.getElementById('detectionResults');
+            resultsDiv.appendChild(alertDiv);
+            
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 5000);
+        }
+
+        // 3D Visualization
+        function init3D() {
+            const container = document.getElementById('threeContainer');
+            
+            // Clear container
+            container.innerHTML = '';
+            
+            // Scene
+            threeScene = new THREE.Scene();
+            threeScene.background = new THREE.Color(0x000000);
+            
+            // Camera
+            threeCamera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+            threeCamera.position.set(5, 5, 5);
+            
+            // Renderer
+            threeRenderer = new THREE.WebGLRenderer({ antialias: true });
+            threeRenderer.setSize(container.clientWidth, container.clientHeight);
+            threeRenderer.shadowMap.enabled = true;
+            threeRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            threeRenderer.setClearColor(0x000000);
+            
+            container.appendChild(threeRenderer.domElement);
+            
+            // Controls - use our custom SimpleOrbitControls
+            threeControls = new window.SimpleOrbitControls(threeCamera, threeRenderer.domElement);
+            threeControls.enableDamping = true;
+            threeControls.dampingFactor = 0.05;
+            threeControls.target.set(0, 0, 0);
+            
+            // Store initial positions for reset
+            threeControls.target0 = threeControls.target.clone();
+            threeControls.position0 = threeCamera.position.clone();
+            threeControls.up0 = threeCamera.up.clone();
+            
+            // Add some 3D objects
+            add3DObjects();
+            
+            // Start animation
+            animate3D();
+            
+            showAlert('3D visualization initialized!', 'success');
+        }
+
+        function add3DObjects() {
+            // Ground
+            const groundGeometry = new THREE.PlaneGeometry(10, 10);
+            const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            threeScene.add(ground);
+            
+            // Mining pit
+            const pitGeometry = new THREE.CylinderGeometry(1, 2, 1, 8);
+            const pitMaterial = new THREE.MeshLambertMaterial({ color: 0x92400e });
+            const pit = new THREE.Mesh(pitGeometry, pitMaterial);
+            pit.position.y = 0.5;
+            pit.castShadow = true;
+            threeScene.add(pit);
+            
+            // Add some mining equipment
+            const equipmentGeometry = new THREE.BoxGeometry(0.5, 1, 0.5);
+            const equipmentMaterial = new THREE.MeshLambertMaterial({ color: 0x666666 });
+            
+            // Add multiple equipment pieces
+            for (let i = 0; i < 3; i++) {
+                const equipment = new THREE.Mesh(equipmentGeometry, equipmentMaterial);
+                equipment.position.set(
+                    (Math.random() - 0.5) * 6,
+                    0.5,
+                    (Math.random() - 0.5) * 6
+                );
+                equipment.castShadow = true;
+                threeScene.add(equipment);
+            }
+            
+            // Add some rocks/debris
+            const rockGeometry = new THREE.SphereGeometry(0.2, 6, 4);
+            const rockMaterial = new THREE.MeshLambertMaterial({ color: 0x8b4513 });
+            
+            for (let i = 0; i < 8; i++) {
+                const rock = new THREE.Mesh(rockGeometry, rockMaterial);
+                rock.position.set(
+                    (Math.random() - 0.5) * 8,
+                    0.1,
+                    (Math.random() - 0.5) * 8
+                );
+                rock.scale.setScalar(Math.random() * 0.5 + 0.5);
+                threeScene.add(rock);
+            }
+            
+            // Lighting
+            const light = new THREE.DirectionalLight(0x60a5fa, 1);
+            light.position.set(5, 10, 5);
+            light.castShadow = true;
+            light.shadow.mapSize.width = 2048;
+            light.shadow.mapSize.height = 2048;
+            threeScene.add(light);
+            
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
+            threeScene.add(ambientLight);
+            
+            // Add a point light for dramatic effect
+            const pointLight = new THREE.PointLight(0x60a5fa, 0.5, 10);
+            pointLight.position.set(0, 3, 0);
+            threeScene.add(pointLight);
+        }
+
+        function animate3D() {
+            requestAnimationFrame(animate3D);
+            if (threeControls && threeRenderer && threeScene && threeCamera) {
+                const updateControls = threeControls.update();
+                if (typeof updateControls === 'function') {
+                    updateControls();
+                }
+                threeRenderer.render(threeScene, threeCamera);
+            }
+        }
+
+        function reset3D() {
+            if (threeCamera && threeControls) {
+                threeCamera.position.set(5, 5, 5);
+                threeControls.reset();
+            }
+        }
+
+        // File drag and drop
+        const fileUpload = document.getElementById('fileUpload');
+        
+        fileUpload.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUpload.classList.add('dragover');
+        });
+        
+        fileUpload.addEventListener('dragleave', () => {
+            fileUpload.classList.remove('dragover');
+        });
+        
+        fileUpload.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUpload.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                document.getElementById('fileInput').files = files;
+                handleFileUpload({ target: { files: files } });
+            }
+        });
+    </script>
+</body>
+</html>
